@@ -52,7 +52,7 @@
 # https://dotnet.microsoft.com/download/dotnet/10.0
 
 # 克隆仓库
-git clone https://github.com/你的用户名/CefDetectorPlus.git
+git clone https://github.com/hao-wanted-to-cry/CefDetectorPlus.git
 cd CefDetectorPlus
 
 # 构建
