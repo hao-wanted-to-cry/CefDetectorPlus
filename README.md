@@ -1,73 +1,108 @@
-# 喜报 · Chromium 内核应用检测器 (GoodNewsBrowserAppDetector)
+# CefDetectorPlus
 
-一个用 C# WinUI 3 开发的 Windows 桌面应用，自动扫描系统已安装的桌面应用程序，识别出哪些是基于 Chromium 内核开发的（如 LibCEF、Electron、CefSharp、NW.js、MiniBlink、MiniElectron、WebView2、Edge、Chrome、Qt WebEngine 等），并以喜庆的"喜报"风格展示结果。
+> 基于 WinUI 3 的 Windows Chromium 内核应用检测工具 —— CefDetectorX 的增强版
 
-## 运行环境
+[![.NET](https://img.shields.io/badge/.NET-10.0-blue)](https://dotnet.microsoft.com/)
+[![WinUI](https://img.shields.io/badge/WinUI-3-purple)](https://learn.microsoft.com/windows/apps/winui/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2B-lightgrey)]()
 
-- Windows 10 1809+ / Windows 11
-- .NET 10 SDK
-- Windows App SDK 2.2
+## 简介
 
-## 功能
+**CefDetectorPlus** 是一款 Windows 平台下的 Chromium 内核应用检测工具，能够精准扫描并统计你电脑中所有基于 Chromium Embedded Framework（CEF）、Electron、NW.js、Qt WebEngine、MiniBlink 等浏览器内核的桌面应用程序。
 
-- **全盘扫描**：扫描注册表 + 所有硬盘驱动器的 Program Files 目录
-- **多引擎识别**：LibCEF、Electron、CefSharp、NW.js、MiniBlink、MiniElectron、WebView2、Edge、Chrome、Qt WebEngine、Chromium
-- **按大小排序**：结果按占用空间从大到小排列
-- **逐秒动画**：卡片以每秒一个的速度逐条显示
-- **喜庆 UI**：喜报背景、金色标题（白色描边）、液态玻璃卡片
-- **音乐控制**：右下角圆形音量按钮，点击弹出垂直滑块
-- **命令行参数**：支持 `--no-bgm` 关闭背景音乐
-- **窗口适配**：窗口大小按图片比例自动调整，图片支持最大化裁剪
+你是否好奇过：VS Code、Steam、微信、QQ、Teams、Postman、Discord……这些看似无关的软件，背后都运行着同一个浏览器内核？CefDetectorPlus 帮你一键揭晓答案。
+
+## 功能特性
+
+- 覆盖 CEF、Electron、NW.js、Qt WebEngine、WebView2、MiniBlink、CefSharp 等所有主流 Chromium 内核
+- 三级优先级引擎识别（Specific > Medium > Generic）+ PE 文件特征码扫描，准确识别重命名 exe 的 Electron 应用
+- 调用 [Everything](https://www.voidtools.com/) 搜索引擎，秒级完成全盘扫描；未安装 Everything 时自动回退文件系统扫描
+- 显示当前所运行的进程 (绿色文件名)
+- 内置 BGM 播放控制
+- 单独显示每个程序的空间占用并按大小排序，
+- 可以通过添加参数 --no-bgm 的形式来关闭背景音乐
+
+## 系统要求
+
+- Windows 10 1809+ 或 Windows 11
+- [.NET 10.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)（绿色版自带运行时）
+- （推荐）[Everything](https://www.voidtools.com/) 已安装并运行，大幅提升扫描速度
+
+## 快速开始
+
+### 方式一：绿色版（推荐）
+
+1. 从 [Releases](https://github.com/hao-wanted-to-cry/CefDetectorPlus/releases) 下载 `CefDetectorPlus_green.zip`
+2. 解压到任意目录
+3. 双击 `CefDetectorPlus.exe` 运行
+
+~~### 方式二：MSIX 安装包~~
+
+1. 从 [Releases](https://github.com/hao-wanted-to-cry/CefDetectorPlus/releases) 下载 `CefDetectorPlus_x64.msixbundle`
+2. 双击安装
 
 ## 构建
 
 ```bash
-dotnet restore
+# 安装 .NET 10.0 SDK
+# https://dotnet.microsoft.com/download/dotnet/10.0
+
+# 克隆仓库
+git clone https://github.com/你的用户名/CefDetectorPlus.git
+cd CefDetectorPlus
+
+# 构建
 dotnet build -c Release
-dotnet run
+
+# 发布绿色版
+dotnet publish -c Release -r win-x64 --self-contained -o ./output
 ```
 
-## 使用
+## 技术架构
 
-```bash
-# 正常运行（带背景音乐）
-dotnet run
-
-# 关闭背景音乐
-dotnet run -- --no-bgm
-```
-
-在 Visual Studio 中打开 `GoodNewsBrowserAppDetector.sln` 即可。
-
-## 命令行参数
-
-| 参数 | 说明 |
+| 模块 | 技术 |
 |------|------|
-| `--no-bgm` | 关闭背景音乐 |
+| UI 框架 | WinUI 3（Windows App SDK 2.2） |
+| 运行时 | .NET 10 |
+| 搜索引擎 | Everything SDK（es.exe 命令行） |
+| 注册表扫描 | 64/32 位 HKLM + HKCU 全覆盖 |
+| PE 扫描 | `ReadOnlySpan<byte>.IndexOf` 向量化硬件加速 |
+| 并行处理 | `Parallel.ForEach` |
+| 打包 | MSIX + self-contained 绿色版 |
+
+## 检测原理
+
+1. **Everything 搜索**：通过 es.exe 正则匹配签名文件（`_100_*.pak`、`libcef*.dll`、`node*.dll` 等）
+2. **注册表扫描**：遍历 HKLM/HKCU 的 Uninstall 注册表项，匹配 DisplayIcon 路径
+3. **PE 特征码扫描**：对 exe 文件读取全量二进制，搜索引擎特征字符串确认内核类型
+4. **MSIX 扫描**：通过 `PackageManager` API 获取 AppX 包的 InstalledLocation
+5. **文件系统兜底**：无 Everything 时从驱动器根目录搜索，深度 5 层
 
 ## 项目结构
 
 ```
 GoodNewsBrowserAppDetector/
-├── GoodNewsBrowserAppDetector.csproj
-├── GoodNewsBrowserAppDetector.sln
-├── App.xaml / App.xaml.cs
-├── MainWindow.xaml / MainWindow.xaml.cs
+├── MainWindow.xaml          # 主窗口 UI（毛玻璃卡片 + 音乐播放器）
+├── MainWindow.xaml.cs       # 主窗口逻辑（实时检测 + 交互控制）
 ├── Models/
-│   └── BrowserBasedApp.cs
+│   └── BrowserBasedApp.cs   # 应用数据模型
 ├── Services/
-│   └── AppDetector.cs
-├── Assets/
-│   ├── goodnews_bg.png
-│   └── goodnews_music.aac
-├── app.manifest
-└── .gitignore
+│   └── AppDetector.cs       # 核心检测引擎
+├── Assets/                   # 资源文件（背景图 + BGM）
+├── es.exe                    # Everything 命令行工具
+└── Package.appxmanifest      # MSIX 打包配置
 ```
 
-## 参考
+## 免责声明
 
-- [CefDetectorX](https://github.com/ShirasawaSama/CefDetectorX)
+本项目仅供学习和研究使用。检测结果仅反映软件使用的浏览器内核技术栈，不代表软件功能性评价。
 
-## 许可
+## 致谢
+
+- [CefDetectorX](https://github.com/shigophilo/CefDetectorX) - 灵感来源和检测思路参考
+- [Everything](https://www.voidtools.com/) - 极速文件搜索引擎
+- [Windows App SDK](https://learn.microsoft.com/windows/apps/windows-app-sdk/) - WinUI 3 框架
+
+## License
 
 MIT
