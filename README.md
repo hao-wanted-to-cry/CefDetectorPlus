@@ -6,6 +6,10 @@
 [![WinUI](https://img.shields.io/badge/WinUI-3-purple)](https://learn.microsoft.com/windows/apps/winui/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2B-lightgrey)]()
 
+## 截屏
+
+![Screenshot](./screenshot.png)
+
 ## 简介
 
 **CefDetectorPlus** 是一款 Windows 平台下的 Chromium 内核应用检测工具，能够精准扫描并统计你电脑中所有基于 Chromium Embedded Framework（CEF）、Electron、NW.js、Qt WebEngine、MiniBlink 等浏览器内核的桌面应用程序。
