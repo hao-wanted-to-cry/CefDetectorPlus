@@ -109,12 +109,12 @@ namespace GoodNewsBrowserAppDetector.Services
         // 内部状态
         // ============================================================
         private readonly ConcurrentQueue<BrowserBasedApp> _results = new();
-        private readonly ConcurrentDictionary<string, byte> _seen = new(StringComparer.OrdinalIgnoreCase);
-        private readonly ConcurrentDictionary<string, byte> _seenLocations = new(StringComparer.OrdinalIgnoreCase);
+        private ConcurrentDictionary<string, byte> _seen = new(StringComparer.OrdinalIgnoreCase);
+        private ConcurrentDictionary<string, byte> _seenLocations = new(StringComparer.OrdinalIgnoreCase);
         private bool _everythingAvailable;
         private string? _esExePath;
         private IProgress<BrowserBasedApp>? _appProgress;
-        private readonly SemaphoreSlim _sizeSemaphore = new(4, 4); // 限并发 4 个 CalcSize
+        private readonly SemaphoreSlim _sizeSemaphore = new(2, 2); // 限并发 2 个 CalcSize，控制内存
 
         // ============================================================
         // 自检测排除
@@ -137,6 +137,10 @@ namespace GoodNewsBrowserAppDetector.Services
         {
             MaxDegreeOfParallelism = Math.Max(2, Environment.ProcessorCount)
         };
+        private static readonly ParallelOptions _fallbackParallelOpts = new()
+        {
+            MaxDegreeOfParallelism = Math.Min(4, Math.Max(2, Environment.ProcessorCount))
+        };
 
         // ============================================================
         // 公开 API
@@ -147,9 +151,9 @@ namespace GoodNewsBrowserAppDetector.Services
             IProgress<string>? statusProgress = null)
         {
             _results.Clear();
-            _seen.Clear();
-            _seenLocations.Clear();
-            _registryMeta.Clear();
+            _seen = new(StringComparer.OrdinalIgnoreCase);
+            _seenLocations = new(StringComparer.OrdinalIgnoreCase);
+            _registryMeta = new(StringComparer.OrdinalIgnoreCase);
             _appProgress = appProgress;
             _everythingAvailable = EverythingSdk.TryInitialize();
             _esExePath = FindEsExe();
@@ -164,6 +168,7 @@ namespace GoodNewsBrowserAppDetector.Services
             }
 
             var results = _results.ToList();
+            _results.Clear(); // 释放 ConcurrentQueue 内部段
 
             // 等待所有异步大小计算任务完成，补充还未计算的
             if (results.Count > 0)
@@ -171,7 +176,7 @@ namespace GoodNewsBrowserAppDetector.Services
                 statusProgress?.Report("正在计算应用大小...");
                 await Task.Run(() =>
                 {
-                    Parallel.ForEach(results, _parallelOpts, app =>
+                    Parallel.ForEach(results, _fallbackParallelOpts, app =>
                     {
                         if (app.SizeBytes > 0) return; // 实时计算已完成
                         try { app.SizeBytes = CalcSize(app.InstallLocation); }
@@ -180,12 +185,14 @@ namespace GoodNewsBrowserAppDetector.Services
                 });
             }
 
-            // 释放扫描中累积的大量字典内存
-            _registryMeta.Clear();
-            _seen.Clear();
-            _seenLocations.Clear();
+            // 释放扫描中累积的大量字典内存（替换为新实例，让旧内部数组可被 GC 回收）
+            _registryMeta = new(StringComparer.OrdinalIgnoreCase);
+            _seen = new(StringComparer.OrdinalIgnoreCase);
+            _seenLocations = new(StringComparer.OrdinalIgnoreCase);
 
-            // 强制 GC 回收扫描产生的临时对象
+            // 强制 GC + LOH 压缩回收（大对象堆碎片是扫描后 990MB 残留的主因）
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
+                System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
@@ -225,48 +232,48 @@ namespace GoodNewsBrowserAppDetector.Services
         // ============================================================
 
         // 注册表元数据缓存：路径 → (DisplayName, Publisher, Icon)
-        private readonly ConcurrentDictionary<string, (string Name, string? Publisher, string? Icon)> _registryMeta =
+        private ConcurrentDictionary<string, (string Name, string? Publisher, string? Icon)> _registryMeta =
             new(StringComparer.OrdinalIgnoreCase);
 
         private void DetectInternal(IProgress<string>? progress)
         {
-            // 参考 CefDetectorX 的搜索策略：
-            // 1. Everything 搜索（毫秒级，全盘覆盖，是主要检测手段）
-            // 2. 注册表扫描（仅收集元数据，不做文件检测）
-            // 3. MSIX 包扫描（仅收集元数据）
-            // 4. 文件系统兜底扫描（Everything 不可用或返回 0 结果时）
-
             int everythingResultCount = 0;
+            bool everythingSearched = false;
 
-            // 并行：Everything 搜索 + 注册表元数据收集
-            Parallel.Invoke(_parallelOpts,
-                () =>
-                {
-                    // 注册表元数据收集（仅读注册表，不做文件检测）
-                    CollectRegistryMetadata();
-                },
-                () =>
-                {
-                    // MSIX 包元数据收集
-                    CollectMsixMetadata();
-                },
-                () =>
-                {
-                    if (_esExePath != null)
+            if (_esExePath != null)
+            {
+                // Everything 可用：并行搜索 + 注册表/MSIX 元数据收集
+                Parallel.Invoke(_parallelOpts,
+                    () => CollectRegistryMetadata(),
+                    () => CollectMsixMetadata(),
+                    () =>
                     {
                         var before = _results.Count;
                         ScanWithEverything(progress);
                         everythingResultCount = _results.Count - before;
+                        everythingSearched = true;
                     }
-                }
-            );
+                );
+            }
 
-            // Everything 不可用或返回 0 结果 → 文件系统兜底
-            if (_esExePath == null || everythingResultCount == 0)
+            // 文件系统兜底：Everything 不可用 或 搜索 0 结果
+            if (!everythingSearched || everythingResultCount == 0)
             {
+                if (!everythingSearched)
+                {
+                    // Everything 不可用 → 跳过注册表收集（节省内存），直接文件系统扫描
+                    _registryMeta = new(StringComparer.OrdinalIgnoreCase);
+                }
+
                 progress?.Report("正在扫描文件系统...");
                 ScanFileSystem(progress);
-                // 注册表也做一轮检测
+
+                _seen = new(StringComparer.OrdinalIgnoreCase); // 释放文件系统扫描累积的目录路径内存
+                GC.Collect();  // 立即回收
+
+                // 注册表兜底（此时 _registryMeta 可能为空或已有数据，由 DetectFromRegistryLocations 判断）
+                if (_registryMeta.Count == 0)
+                    CollectRegistryMetadata();
                 DetectFromRegistryLocations(progress);
             }
         }
@@ -1029,8 +1036,8 @@ namespace GoodNewsBrowserAppDetector.Services
                 catch { }
             }
 
-            // 并行扫描，每个一级目录深度 4 层
-            Parallel.ForEach(scanDirs, _parallelOpts, rootDir =>
+            // 并行扫描（兜底低并发，避免内存爆炸），每个一级目录深度 4 层
+            Parallel.ForEach(scanDirs, _fallbackParallelOpts, rootDir =>
             {
                 try
                 {
@@ -1119,7 +1126,7 @@ namespace GoodNewsBrowserAppDetector.Services
             _seenLocations.TryAdd(location, 0);
             _appProgress?.Report(app);
 
-            // 异步实时计算大小（限并发 4，完成后通过 INotifyPropertyChanged 自动刷新 UI）
+            // 异步实时计算大小（限并发 2，完成后通过 INotifyPropertyChanged 自动刷新 UI）
             _ = Task.Run(async () =>
             {
                 await _sizeSemaphore.WaitAsync();
@@ -1130,60 +1137,29 @@ namespace GoodNewsBrowserAppDetector.Services
         }
 
         /// <summary>
-        /// 计算目录磁盘占用大小（递归）。
-        /// 使用递归遍历，每个子目录失败不影响整体。
-        /// 跳过重解析点（ReparsePoint）避免循环和双倍计数。
-        /// 深度限制防止无限循环。
+        /// 计算目录磁盘占用大小（流式枚举，无 HashSet，内存友好）。
+        /// 使用 EnumerationOptions 让 OS 层处理递归，跳过重解析点和系统文件。
         /// </summary>
         private static long CalcSize(string path)
         {
             long total = 0;
-            CalcSizeRecursive(path, new HashSet<string>(StringComparer.OrdinalIgnoreCase), 0, ref total);
-            return total;
-        }
-
-        private static void CalcSizeRecursive(string path, HashSet<string> visited, int depth, ref long total)
-        {
-            const int maxDepth = 10;
-            if (depth > maxDepth) return;
-
             try
             {
-                var di = new DirectoryInfo(path);
-                var normalizedPath = di.FullName.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                // 防止循环（通过路径去重，替代 CefDetectorX 的 inode 去重）
-                if (!visited.Add(normalizedPath)) return;
-
-                // 根目录本身是重解析点 → 跳过（如 OneDrive 的 junction）
-                if ((di.Attributes & FileAttributes.ReparsePoint) != 0) return;
-
-                // 遍历文件
-                try
+                var options = new EnumerationOptions
                 {
-                    foreach (var file in di.EnumerateFiles())
-                    {
-                        try
-                        {
-                            if ((file.Attributes & FileAttributes.ReparsePoint) == 0)
-                                total += file.Length;
-                        }
-                        catch { }
-                    }
-                }
-                catch { }
-
-                // 遍历子目录
-                try
+                    IgnoreInaccessible = true,
+                    RecurseSubdirectories = true,
+                    MaxRecursionDepth = 10,
+                    AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.System
+                };
+                foreach (var file in Directory.EnumerateFiles(path, "*", options))
                 {
-                    foreach (var subDir in di.EnumerateDirectories())
-                    {
-                        CalcSizeRecursive(subDir.FullName, visited, depth + 1, ref total);
-                    }
+                    try { total += new FileInfo(file).Length; }
+                    catch { }
                 }
-                catch { }
             }
             catch { }
+            return total;
         }
 
         /// <summary>
