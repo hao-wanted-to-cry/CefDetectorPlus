@@ -1,4 +1,4 @@
-# CefDetectorPlus
+# CefDetectorPlus - 一眼CEF Plus: 年轻人的第三款 Windows CEF检测器
 
 > 基于 WinUI 3 的 Windows Chromium 内核应用检测工具 —— CefDetectorX 的增强版
 
@@ -11,6 +11,10 @@
 **CefDetectorPlus** 是一款 Windows 平台下的 Chromium 内核应用检测工具，能够精准扫描并统计你电脑中所有基于 Chromium Embedded Framework（CEF）、Electron、NW.js、Qt WebEngine、MiniBlink 等浏览器内核的桌面应用程序。
 
 你是否好奇过：VS Code、Steam、微信、QQ、Teams、Postman、Discord……这些看似无关的软件，背后都运行着同一个浏览器内核？CefDetectorPlus 帮你一键揭晓答案。
+
+## 界面
+
+![Screenshot](./screenshot.png)
 
 ## 功能特性
 
