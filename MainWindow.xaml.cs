@@ -6,15 +6,19 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 using Windows.Media.Core;
 using Windows.Media.Playback;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 using GoodNewsBrowserAppDetector.Models;
 using GoodNewsBrowserAppDetector.Services;
 
@@ -462,6 +466,8 @@ namespace GoodNewsBrowserAppDetector
 
                     SetTitleColor(_blueBrush);
                     UpdateTitle();
+                    ExportBtn.Visibility = Visibility.Visible;
+                    ExportSeparator.Visibility = Visibility.Visible;
                 });
             }
             catch (Exception ex)
@@ -527,6 +533,167 @@ namespace GoodNewsBrowserAppDetector
             if (count == 0)
                 text += "（也有可能是你没安装Everything）";
             SetTitleText(text);
+        }
+
+        // ============ 导出报告 ============
+
+        private async void ExportBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_displayedApps.Count == 0) return;
+
+            ExportBtn.IsEnabled = false;
+            ExportProgress.IsIndeterminate = true;
+            ExportProgress.ClearValue(ProgressBar.ForegroundProperty);
+            SlideExportArea(true);
+
+            try
+            {
+                var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+                var savePicker = new FileSavePicker();
+                WinRT.Interop.InitializeWithWindow.Initialize(savePicker, hWnd);
+                savePicker.SuggestedFileName = "浏览器内核应用报告";
+                savePicker.FileTypeChoices.Add("ZIP 压缩文件", new[] { ".zip" });
+
+                var file = await savePicker.PickSaveFileAsync();
+                if (file == null)
+                {
+                    // 取消：直接消失
+                    SlideExportArea(false);
+                    ExportBtn.IsEnabled = true;
+                    return;
+                }
+
+                await ReportExporter.ExportAsync(_displayedApps, file.Path);
+
+                // 成功：进度条变绿满条
+                ExportProgress.IsIndeterminate = false;
+                ExportProgress.Value = 100;
+                ExportProgress.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x4C, 0xAF, 0x50));
+                _ = AutoHideExportArea();
+            }
+            catch
+            {
+                // 失败：进度条变红满条
+                ExportProgress.IsIndeterminate = false;
+                ExportProgress.Value = 100;
+                ExportProgress.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xF4, 0x43, 0x36));
+                _ = AutoHideExportArea();
+            }
+            finally
+            {
+                ExportBtn.IsEnabled = true;
+            }
+        }
+
+        // 导出进度条动画（Storyboard + QuadraticEase，布局零变动）
+        private Storyboard? _exportStoryboard;
+        private int _exportHideVersion; // 版本号：防止陈旧 Completed 回调覆盖新的 show 状态
+        private CancellationTokenSource? _autoHideCts;
+
+        private void SlideExportArea(bool show)
+        {
+            _autoHideCts?.Cancel();
+            _exportHideVersion++; // 递增版本号，使所有待处理的 hide 回调失效
+
+            if (_exportStoryboard != null)
+            {
+                _exportStoryboard.Completed -= OnExportHideCompleted;
+                _exportStoryboard.Stop();
+            }
+
+            var sb = new Storyboard();
+            var dur = TimeSpan.FromMilliseconds(250);
+            var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+
+            if (show)
+            {
+                // 首次解除 XAML 默认 Collapsed
+                if (ExportProgressArea.Visibility != Visibility.Visible)
+                    ExportProgressArea.Visibility = Visibility.Visible;
+                // 进度条尺寸始终恒定，永不改变 → 布局空间固定 → 无跳变
+                ExportProgress.Height = 4;
+                ExportProgress.Margin = new Thickness(0, 4, 0, 0);
+                ExportProgressArea.Opacity = 0;
+                RepoRowTrans.Y = 0;
+                ProgressAreaTrans.Y = -10;
+            }
+            else
+            {
+                // hide 开始时确保进度条尺寸不变（可能被上次 show 的 Completion 部分修改）
+                ExportProgress.Height = 4;
+                ExportProgress.Margin = new Thickness(0, 4, 0, 0);
+                ExportProgressArea.Opacity = 1;
+                RepoRowTrans.Y = -14;
+                ProgressAreaTrans.Y = 0;
+            }
+
+            // Opacity
+            var oa = new DoubleAnimation
+            {
+                From = show ? 0 : 1,
+                To = show ? 1 : 0,
+                Duration = dur,
+                EasingFunction = ease
+            };
+            Storyboard.SetTarget(oa, ExportProgressArea);
+            Storyboard.SetTargetProperty(oa, "Opacity");
+            sb.Children.Add(oa);
+
+            // RepoRow Y
+            var ry = new DoubleAnimation
+            {
+                From = show ? 0 : -14,
+                To = show ? -14 : 0,
+                Duration = dur,
+                EasingFunction = ease
+            };
+            Storyboard.SetTarget(ry, RepoRowTrans);
+            Storyboard.SetTargetProperty(ry, "Y");
+            sb.Children.Add(ry);
+
+            // ProgressArea Y
+            var py = new DoubleAnimation
+            {
+                From = show ? -10 : 0,
+                To = show ? 0 : -10,
+                Duration = dur,
+                EasingFunction = ease
+            };
+            Storyboard.SetTarget(py, ProgressAreaTrans);
+            Storyboard.SetTargetProperty(py, "Y");
+            sb.Children.Add(py);
+
+            if (!show)
+                sb.Completed += OnExportHideCompleted;
+
+            _exportStoryboard = sb;
+            sb.Begin();
+        }
+
+        private void OnExportHideCompleted(object? sender, object e)
+        {
+            int ver = _exportHideVersion; // 捕获当前版本号
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                // 版本号已变 → 新的 show 已启动 → 跳过此陈旧回调
+                if (ver != _exportHideVersion) return;
+                ExportProgress.IsIndeterminate = true;
+                ExportProgress.Value = 0;
+                ExportProgress.ClearValue(ProgressBar.ForegroundProperty);
+            });
+        }
+
+        private async Task AutoHideExportArea()
+        {
+            var cts = new CancellationTokenSource();
+            var old = Interlocked.Exchange(ref _autoHideCts, cts);
+            try { old?.Cancel(); } catch { }
+            try
+            {
+                await Task.Delay(5000, cts.Token);
+                DispatcherQueue.TryEnqueue(() => SlideExportArea(false));
+            }
+            catch (OperationCanceledException) { }
         }
 
         // ============ 卡片交互 ============

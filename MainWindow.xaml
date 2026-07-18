@@ -120,14 +120,47 @@
                 </ItemsRepeater>
             </ScrollViewer>
 
-            <!-- Repo 链接（左下角） -->
-            <HyperlinkButton Grid.Row="2"
-                             HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                             Margin="20,0,0,10"
+            <!-- 左下角：Repo链接 + 导出按钮 + 进度 -->
+            <StackPanel Grid.Row="2"
+                        HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                        Orientation="Vertical"
+                        Margin="8,0,0,6">
+                <!-- 链接行（进度条出现时上移） -->
+                <StackPanel x:Name="RepoRow" Orientation="Horizontal">
+                    <StackPanel.RenderTransform>
+                        <TranslateTransform x:Name="RepoRowTrans" />
+                    </StackPanel.RenderTransform>
+                    <HyperlinkButton
                              NavigateUri="https://github.com/hao-wanted-to-cry/CefDetectorPlus"
                              Foreground="White"
                              FontWeight="Thin" FontSize="12"
                              Content="Repo: github.com/hao-wanted-to-cry/CefDetectorPlus(求个START!)" />
+                    <TextBlock x:Name="ExportSeparator" Text=" | "
+                               Foreground="White" FontWeight="Thin" FontSize="12"
+                               VerticalAlignment="Center" Visibility="Collapsed" />
+                    <HyperlinkButton x:Name="ExportBtn"
+                              Foreground="White"
+                              FontWeight="Thin" FontSize="12"
+                              Content="导出"
+                              Visibility="Collapsed"
+                              Click="ExportBtn_Click" />
+                </StackPanel>
+                <!-- 进度条+状态（导出时滑入） -->
+                <StackPanel x:Name="ExportProgressArea"
+                            Visibility="Visible" Opacity="0">
+                    <StackPanel.RenderTransform>
+                        <TranslateTransform x:Name="ProgressAreaTrans" />
+                    </StackPanel.RenderTransform>
+                    <ProgressBar x:Name="ExportProgress"
+                                 IsIndeterminate="True"
+                                 Height="4" MinWidth="200"
+                                 Margin="0,4,0,0" />
+                    <TextBlock x:Name="ExportStatus"
+                               Visibility="Collapsed"
+                               Foreground="#FFD700" FontSize="11" FontWeight="SemiBold"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+            </StackPanel>
 
             <!-- 底部音乐控制栏（毛玻璃材质，右下角） -->
             <Grid x:Name="MusicControlBar" Grid.Row="2"
