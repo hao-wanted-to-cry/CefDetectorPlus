@@ -2,29 +2,31 @@
 
 > 基于 WinUI 3 的 Windows Chromium 内核应用检测工具 —— CefDetectorX 的增强版
 
+Check how many CEFs are on your Windows.
+
 [![.NET](https://img.shields.io/badge/.NET-10.0-blue)](https://dotnet.microsoft.com/)
 [![WinUI](https://img.shields.io/badge/WinUI-3-purple)](https://learn.microsoft.com/windows/apps/winui/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2B-lightgrey)]()
 
-## 简介
+**【3 代使用 C# 编写并提供更多功能】**
 
-**CefDetectorPlus** 是一款 Windows 平台下的 Chromium 内核应用检测工具，能够精准扫描并统计你电脑中所有基于 Chromium Embedded Framework（CEF）、Electron、NW.js、Qt WebEngine、MiniBlink 等浏览器内核的桌面应用程序。
+> **Note**
+> 欢迎你把程序截图发到 [Discussions](https://github.com/hao-wanted-to-cry/CefDetectorPlus/discussions/1) 中, 看看谁才是真的 **《超级CEF王》**
 
-你是否好奇过：VS Code、Steam、微信、QQ、Teams、Postman、Discord……这些看似无关的软件，背后都运行着同一个浏览器内核？CefDetectorPlus 帮你一键揭晓答案。
+> 你说的对，但是《LibCEF》是由谷歌自主研发的一款全新开放浏览器内核。第三方代码运行在在一个被称作「CEF」的浏览器沙盒，在这里，被前端程序员选中的代码将被授予「libcef.dll」，导引浏览器之力‌。你将扮演一位名为「电脑用户」的冤种角色，在各种软件的安装中下载类型各异、体积庞大的 CEF 们，被它们一起占用硬盘空间，吃光你的内存——同时，逐步发掘「CEF」的真相。
 
-## 界面
+## 截图
 
 ![Screenshot](./screenshot.png)
 
 ## 功能特性
 
-- 覆盖 CEF、Electron、NW.js、Qt WebEngine、WebView2、MiniBlink、CefSharp 等所有主流 Chromium 内核
+- 检测 CEF 的类型: 如 [libcef](https://bitbucket.org/chromiumembedded/cef/src/master/)、[Electron](https://www.electronjs.org/)、[NWJS](https://nwjs.io/)、[CefSharp](http://cefsharp.github.io/)、[MiniBlink](https://github.com/weolar/miniblink49)、[MiniElectron](https://github.com/weolar/miniblink49)、[Edge](https://www.microsoft.com/en-us/edge) 和 [Chrome](https://www.google.com/chrome/)
 - 三级优先级引擎识别（Specific > Medium > Generic）+ PE 文件特征码扫描，准确识别重命名 exe 的 Electron 应用
 - 调用 [Everything](https://www.voidtools.com/) 搜索引擎，秒级完成全盘扫描；未安装 Everything 时自动回退文件系统扫描
 - 显示当前所运行的进程 (绿色文件名)
-- 内置 BGM 播放控制
 - 单独显示每个程序的空间占用并按大小排序，
-- 可以通过添加参数 --no-bgm 的形式来关闭背景音乐
+- 可以通过添加参数 `--no-bgm` 的形式来关闭背景音乐
 
 ## 系统要求
 
@@ -101,6 +103,10 @@ GoodNewsBrowserAppDetector/
 
 本项目仅供学习和研究使用。检测结果仅反映软件使用的浏览器内核技术栈，不代表软件功能性评价。
 
+## 作者
+
+hao-wanted-to-cry
+
 ## 致谢
 
 - [CefDetectorX](https://github.com/shigophilo/CefDetectorX) - 灵感来源和检测思路参考
@@ -109,4 +115,4 @@ GoodNewsBrowserAppDetector/
 
 ## License
 
-MIT
+[MIT](./LICENSE)
