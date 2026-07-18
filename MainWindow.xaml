@@ -120,6 +120,15 @@
                 </ItemsRepeater>
             </ScrollViewer>
 
+            <!-- Repo 链接（左下角） -->
+            <HyperlinkButton Grid.Row="2"
+                             HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                             Margin="20,0,0,10"
+                             NavigateUri="https://github.com/hao-wanted-to-cry/CefDetectorPlus"
+                             Foreground="White"
+                             FontWeight="Thin" FontSize="12"
+                             Content="Repo: github.com/hao-wanted-to-cry/CefDetectorPlus(求个START!)" />
+ 
             <!-- 底部音乐控制栏（毛玻璃材质，右下角） -->
             <Grid x:Name="MusicControlBar" Grid.Row="2"
                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
