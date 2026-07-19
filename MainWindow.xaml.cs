@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,10 +39,40 @@ namespace GoodNewsBrowserAppDetector
         private int _imageHeight = 450;
         private int _minWindowWidth = 560;
         private int _minWindowHeight = 500;
-        private Microsoft.UI.Windowing.AppWindow? _appWindow;
-        private bool _isUpdatingWindowSize;
+        private nint _hwnd;
+        private nint _originalWndProc;
+        private Win32WindowProc? _newWndProc; // 保持委托引用，防止 GC 回收
         private const int DefaultTopMargin = 130;
         private const int MaximizedExtraMargin = 112;
+
+        // ============ Win32 最小窗口尺寸限制 ============
+        private const int GWLP_WNDPROC = -4;
+        private const int WM_GETMINMAXINFO = 0x0024;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MINMAXINFO
+        {
+            public POINT ptReserved;
+            public POINT ptMaxSize;
+            public POINT ptMaxPosition;
+            public POINT ptMinTrackSize;
+            public POINT ptMaxTrackSize;
+        }
+
+        private delegate nint Win32WindowProc(nint hWnd, uint msg, nint wParam, nint lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern nint CallWindowProc(nint lpPrevWndFunc, nint hWnd, uint msg, nint wParam, nint lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong);
 
         // 滚动状态标记，滚动中暂停卡片效果
         private bool _isScrolling;
@@ -83,28 +114,38 @@ namespace GoodNewsBrowserAppDetector
 
         private void ConfigureWindow()
         {
-            var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd);
-            _appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+            _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_hwnd);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
             double ar = (double)_imageWidth / _imageHeight;
             _minWindowWidth = Math.Max(_imageWidth, 560);
             _minWindowHeight = Math.Max(_imageHeight, 500);
-            _appWindow.Resize(new Windows.Graphics.SizeInt32((int)(600 * ar), 600));
-            _appWindow.Changed += AppWindow_Changed;
+            appWindow.Resize(new Windows.Graphics.SizeInt32((int)(600 * ar), 600));
+            appWindow.Changed += AppWindow_Changed;
+
+            // 用 WM_GETMINMAXINFO 实现最小窗口尺寸硬限制（操作系统级拦截，零跳变）
+            _newWndProc = NewWindowProc;
+            _originalWndProc = SetWindowLongPtr(_hwnd, GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(_newWndProc));
         }
 
         private void AppWindow_Changed(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowChangedEventArgs args)
         {
-            if (_isUpdatingWindowSize) return;
             if (!args.DidSizeChange) return;
-            var size = sender.Size;
-            bool need = false;
-            int w = size.Width, h = size.Height;
-            if (w < _minWindowWidth) { w = _minWindowWidth; need = true; }
-            if (h < _minWindowHeight) { h = _minWindowHeight; need = true; }
-            if (need) { _isUpdatingWindowSize = true; sender.Resize(new Windows.Graphics.SizeInt32(w, h)); _isUpdatingWindowSize = false; return; }
-            AdjustTitleMargin(h);
+            AdjustTitleMargin(sender.Size.Height);
+        }
+
+        private nint NewWindowProc(nint hWnd, uint msg, nint wParam, nint lParam)
+        {
+            if (msg == WM_GETMINMAXINFO)
+            {
+                var info = Marshal.PtrToStructure<MINMAXINFO>(lParam);
+                info.ptMinTrackSize.X = _minWindowWidth;
+                info.ptMinTrackSize.Y = _minWindowHeight;
+                Marshal.StructureToPtr(info, lParam, false);
+                return nint.Zero;
+            }
+            return CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
         }
 
         private void AdjustTitleMargin(int windowHeight)
