@@ -110,7 +110,7 @@ hao-wanted-to-cry
 
 ## 致谢
 
-- [CefDetectorX](https://github.com/shigophilo/CefDetectorX) - 灵感来源和检测思路参考
+- [CefDetectorX](https://github.com/ShirasawaSama/CefDetectorX) - 灵感来源和检测思路参考
 - [Everything](https://www.voidtools.com/) - 极速文件搜索引擎
 - [Windows App SDK](https://learn.microsoft.com/windows/apps/windows-app-sdk/) - WinUI 3 框架
 
